@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Among Us Web</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial; }
+        #gameCanvas { background: #111; display: block; }
+        #taskList { position: absolute; top: 10px; left: 10px; color: white; }
+        #meetingUI { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #222; padding: 20px; color: white; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="taskList">Tasks: Fix Wiring (0/3)</div>
+    <div id="meetingUI">
+        <h2>Emergency Meeting!</h2>
+        <div id="playerList"></div>
+        <button onclick="vote('red')">Vote RED</button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // ================= GAME STATE =================
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const socket = io();
+        let players = [];
+        let currentPlayerId = "";
+        let isImpostor = false;
+        let tasks = 0;
+
+        // ================= PLAYER CLASS =================
+        class Player {
+            constructor(id, x, y, color, isImpostor) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.isImpostor = isImpostor;
+                this.dead = false;
+            }
+
+            draw() {
+                if (this.dead) return;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ================= GAME LOGIC =================
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            players.forEach(player => player.draw());
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ================= SOCKET EVENTS =================
+        socket.on("connect", () => {
+            currentPlayerId = socket.id;
+            console.log("Connected as:", currentPlayerId);
+        });
+
+        socket.on("updatePlayers", (serverPlayers) => {
+            players = serverPlayers;
+        });
+
+        socket.on("youAreImpostor", () => {
+            isImpostor = true;
+            alert("KAMU IMPOSTOR! Bunuh semua crewmate!");
+        });
+
+        socket.on("taskUpdated", (newTasks) => {
+            tasks = newTasks;
+            document.getElementById("taskList").innerText = `Tasks: Fix Wiring (${tasks}/3)`;
+        });
+
+        socket.on("startMeeting", () => {
+            document.getElementById("meetingUI").style.display = "block";
+        });
+
+        // ================= INPUT HANDLING =================
+        canvas.addEventListener("click", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // Jika impostor, kill player lain
+            if (isImpostor) {
+                players.forEach(player => {
+                    if (!player.dead && Math.abs(player.x - x) < 20 && Math.abs(player.y - y) < 20) {
+                        socket.emit("kill", player.id);
+                    }
+                });
+            }
+            // Jika crewmate, lakukan tugas
+            else if (Math.random() > 0.7) {
+                socket.emit("doTask");
+            }
+        });
+
+        // ================= START GAME =================
+        gameLoop();
+        socket.emit("joinGame");
+    </script>
+</body>
+</html>
